@@ -2,7 +2,7 @@
     (:require [riddley.walk :refer [walk-exprs]]
               [clojure.core.async :refer [go chan >! <!]]))
 
-(defn substitute-in-chan [body sym]
+(defn substitute-in-chan [body sym silent]
       (let [result (atom nil)]
            [(walk-exprs (fn [expr]
                              (when (coll? expr)
@@ -10,7 +10,9 @@
                                              (= a 'r<!))))
                          (fn [[cmd k & more :as expr]]
                              (reset! result k)
-                             `(<! ~sym ~@more))
+                             `(let [[sil# val#] (<! ~sym ~@more)]
+                                   (reset! ~silent sil#)
+                                   val#))
                          body)
             @result]))
 
@@ -20,11 +22,8 @@
                             (when-let [[a] (seq expr)]
                                       (= a 'r>!))))
                   (fn [[cmd k & more :as expr]]
-                      `(if (deref ~silent)
-                           (do (println (str "silent" ~@more))
-                               (flush))
-                           (do (println (str "loud" ~@more))
-                               (>! ~k ~@more))))
+                      `(when-not (deref ~silent)
+                                 (>! ~k ~@more)))
                   body))
 
 (def rchan chan)
@@ -45,27 +44,21 @@
 (defmacro rgo [& body]
           (let [in-new (gensym)
                 silent (gensym)
-                [body in-old] (substitute-in-chan body in-new)
+                [body in-old] (substitute-in-chan body in-new silent)
                 body (substitute-out-chan body silent)]
-               `(go (let [~silent (atom false)]
-                         (loop [ledger# :start]
-                               (let [~in-new (chan)]
-                                    
-                                    (reset! ~silent (not= ledger# :start))
-                                    (go ~@body)
-                                    (println "startup done")
-                                    (when (not= ledger# :start)
-                                          (doseq [k# (reverse ledger#)]
-                                                 (println (str "FF" (deref ~silent)) )
-                                                 (flush)
-                                                 (>! ~in-new k#)))
-                                    (reset! ~silent false)
-                                    (recur (loop [ledger# nil]
-                                                 (let [val# (<! ~in-old)]
-                                                      (if-let [steps# (rewind-steps val#)]
-                                                              (drop steps# ledger#)
-                                                              (do (>! ~in-new val#)
-                                                                  (recur (cons val# ledger#)))))))))))))
+               `(go (loop [ledger# :start]
+                          (let [~in-new (chan)]
+                               (go (let [~silent (atom (not= ledger# :start))]
+                                        ~@body))
+                               (when (not= ledger# :start)
+                                     (doseq [k# (reverse ledger#)]
+                                            (>! ~in-new [true k#])))
+                               (recur (loop [ledger# nil]
+                                            (let [val# (<! ~in-old)]
+                                                 (if-let [steps# (rewind-steps val#)]
+                                                         (drop steps# ledger#)
+                                                         (do (>! ~in-new [false val#])
+                                                             (recur (cons val# ledger#))))))))))))
 
 (defn foo
   "I don't do a whole lot."

@@ -5,7 +5,7 @@
               [clojure.core.async :refer [go chan >! <!]]))
 
 (deftest a-test
-         (testing "inchan extraction"
+         #_(testing "inchan extraction"
                   (is (= ['(rgo
                             (r>! out "first step")
                             (clojure.core.async/<! :foo)
@@ -33,9 +33,8 @@
                                                     (or (deref :foo) (r>! out "third step")))
                                               :foo)))))
 
-
 (deftest go-blocks
-         #_(testing "just with channels"
+         (testing "just with channels"
                   (let [in     (rchan)
                         out    (rchan)
                         result (atom nil)]
@@ -49,7 +48,7 @@
                        (go (<! out)
                            (<! out)
                            (is (= "third step" (<! out))))))
-         #_(testing "basic rgo"
+         (testing "basic rgo"
                   (let [in     (rchan)
                         out    (rchan)
                         result (atom nil)]
@@ -63,7 +62,7 @@
                        (go (<! out)
                            (<! out)
                            (is (= "third step" (<! out))))))
-         #_(testing "single rewind"
+         (testing "single rewind"
                   (let [in     (rchan)
                         out    (rchan)
                         result (atom nil)]
@@ -75,12 +74,8 @@
                             (r>! out "second step")
                             (r<! in)
                             (r>! out "third step"))
-                       (go (let [a1 (<! out)]
-                                (println (str "a1" a1))
-                                (flush))
-                           (let [a2 (<! out)]
-                                (println (str "a2" a2))
-                                (flush))
+                       (go (<! out)
+                           (<! out)
                            (is (= "second step" (<! out))))))
          (testing "partial rewind"
                   (let [in     (rchan)
@@ -89,8 +84,7 @@
                        (go (>! in true)
                            (>! in true)
                            (rewind in)
-                           (>! in true)
-                           )
+                           (>! in true))
                        (rgo (r>! out "first step")
                             (r<! in)
                             (r>! out "second step")
@@ -99,10 +93,6 @@
                             (r<! in)
                             (r>! out "fourth step"))
                        (go (is (= "first step" (<! out)))
-                           (println "a1")
                            (is (= "second step" (<! out)))
-                           (println "a2")
                            (is (= "third step" (<! out)))
-                           (println "a3")
-                           (is (= "third step" (<! out)))
-                           (println "a4")))))
+                           (is (= "third step" (<! out)))))))
