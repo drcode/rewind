@@ -1,7 +1,7 @@
 (ns rewind.core-test
     (:require [clojure.test :refer :all]
               [riddley.walk :refer [macroexpand-all]]
-              [rewind.core :refer [rgo rchan substitute-in-chan substitute-out-chan rewind]]
+              [rewind.core :refer [rgo rchan substitute-in-rchan substitute-out-chan rewind rewind-struct rchan->chan]]
               [clojure.core.async :refer [go chan >! <!]]))
 
 (deftest a-test
@@ -36,7 +36,7 @@
 (deftest go-blocks
          (testing "just with channels"
                   (let [in     (rchan)
-                        out    (rchan)
+                        out    (chan)
                         result (atom nil)]
                        (go (>! in true)
                            (>! in true))
@@ -50,49 +50,99 @@
                            (is (= "third step" (<! out))))))
          (testing "basic rgo"
                   (let [in     (rchan)
-                        out    (rchan)
+                        out    (chan)
                         result (atom nil)]
                        (go (>! in true)
                            (>! in true))
-                       (rgo (r>! out "first step")
+                       (rgo (>! out "first step")
                             (r<! in)
-                            (r>! out "second step")
+                            (>! out "second step")
                             (r<! in)
-                            (r>! out "third step"))
+                            (>! out "third step"))
                        (go (<! out)
                            (<! out)
                            (is (= "third step" (<! out))))))
          (testing "single rewind"
                   (let [in     (rchan)
-                        out    (rchan)
+                        out    (chan)
                         result (atom nil)]
                        (go (>! in true)
                            (rewind in)
                            (>! in true))
-                       (rgo (r>! out "first step")
+                       (rgo (>! out "first step")
                             (r<! in)
-                            (r>! out "second step")
+                            (>! out "second step")
                             (r<! in)
-                            (r>! out "third step"))
+                            (>! out "third step"))
                        (go (<! out)
                            (<! out)
                            (is (= "second step" (<! out))))))
          (testing "partial rewind"
                   (let [in     (rchan)
-                        out    (rchan)
+                        out    (chan)
                         result (atom nil)]
                        (go (>! in true)
                            (>! in true)
                            (rewind in)
                            (>! in true))
-                       (rgo (r>! out "first step")
+                       (rgo (>! out "first step")
                             (r<! in)
-                            (r>! out "second step")
+                            (>! out "second step")
                             (r<! in)
-                            (r>! out "third step")
+                            (>! out "third step")
                             (r<! in)
-                            (r>! out "fourth step"))
+                            (>! out "fourth step"))
                        (go (is (= "first step" (<! out)))
                            (is (= "second step" (<! out)))
                            (is (= "third step" (<! out)))
-                           (is (= "third step" (<! out)))))))
+                           (is (= "third step" (<! out))))))
+         (testing "single rewind rchan output"
+                    (let [in     (rchan)
+                          out    (rchan)
+                          result (atom nil)]
+                         (go (>! in true)
+                             (rewind in)
+                             (>! in true))
+                         (rgo (r>! out "first step")
+                              (r<! in)
+                              (r>! out "second step")
+                              (r<! in)
+                              (r>! out "third step"))
+                         (go (<! out)
+                             (<! out)
+                             (is (= (rewind-struct 1) (<! out))))))
+         (testing "fanning rchan output"
+                    (let [in     (rchan)
+                          out    (rchan)
+                          result (atom nil)]
+                         (go (>! in true)
+                             (rewind in)
+                             (>! in true))
+                         (rgo (r>! out "first step")
+                              (r<! in)
+                              (r>! out "second step")
+                              (r>! out "second prime step")
+                              (r<! in)
+                              (r>! out "third step"))
+                         (go (<! out)
+                             (<! out)
+                             (<! out)
+                             (is (= (rewind-struct 2) (<! out))))))
+         (testing "fanning rchan output"
+                    (let [in     (rchan)
+                          out    (rchan)
+                          result (atom nil)]
+                         (go (>! in true)
+                             (rewind in)
+                             (>! in true))
+                         (rgo (r>! out "first step")
+                              (r<! in)
+                              (r>! out "second step")
+                              (r>! out "second prime step")
+                              (r<! in)
+                              (r>! out "third step"))
+                         (let [c (rchan->chan out)]
+                              (go (<! c)
+                                  (<! c)
+                                  (<! c)
+                                  (is (= "first step" (<! c))))))))
