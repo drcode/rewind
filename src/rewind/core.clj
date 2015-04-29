@@ -1,6 +1,6 @@
 (ns rewind.core
     (:require [riddley.walk :refer [walk-exprs]]
-              [clojure.core.async :refer [go chan >! <!]]))
+              [clojure.core.async :refer [go chan >! <! <!! thread put!]]))
 
 (defn substitute-in-rchan [body sym silent out-counts out-counts-chan]
       (let [result (atom nil)]
@@ -54,6 +54,10 @@
              `(>! ~chan (rewind-struct ~@more)))
           ([chan]
              `(>! ~chan (rewind-struct 1))))
+
+(defn rewind!
+      ([chan steps]
+         (put! chan (rewind-struct steps))))
 
 (defn rewind-steps [val]
       (when (coll? val)
@@ -181,6 +185,11 @@
                               (do (>! c val)
                                   (recur (cons val ledger)))))))
            c))
+
+(defn listen-chan [chan]
+      (thread (while true
+                 (println "\nOUTPUT" (<!! chan))
+                 (flush))))
 
 (defn foo
   "I don't do a whole lot."
